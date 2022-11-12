@@ -3,7 +3,6 @@ import numpy as np
 import datetime
 import dateutil.relativedelta
 from sklearn.linear_model import LinearRegression
-from sklearn.model_selection import train_test_split
 
 
 def getStockDataDf(df, maValue):
@@ -18,7 +17,10 @@ def getStockDataDf(df, maValue):
     return stockDataDf
 
 
-def getSlidingWindowDf(stockDataDf, sampleDataSize, stepMonth):
+
+
+
+def getSlidingWindowDf(stockDataDf, sampleDataSize, backtestStartDate, backtestEndDate, stepMonth):
     """
     通过样本内数据量, 滑动窗口步长求滑动窗口
     :param stockDataDf: 股票数据
@@ -69,7 +71,7 @@ def getSlidingWindowDf(stockDataDf, sampleDataSize, stepMonth):
     return slidingWindowDf
 
 
-def getTrainData(stockDataDf, trainStartDate, trainEndDate, pastDays):
+def getTrainData(stockDataDf, trainStartDate, trainEndDate, forecastDays, pastDays):
     """
     计算该窗口的训练数据集
     :param stockDataDf: 股票数据
@@ -83,14 +85,14 @@ def getTrainData(stockDataDf, trainStartDate, trainEndDate, pastDays):
     swStockDataDf = stockDataDf[trainStartDate:trainEndDate]  # 取当前滑动窗口股票数据, 深拷贝
     swStockData = np.array(swStockDataDf)  # 当前滑动窗口训练数据集, 二维数组
     for i in range(len(swStockData)):  # 根据将过去pastDays天数据作为一组
-        if (i + pastDays >= len(swStockData)):  # 最后一组不满pastDays, 丢弃
+        if (i + pastDays + (forecastDays - 1) >= len(swStockData)):  # 最后一组不满pastDays, 丢弃
             break
         trainX.append(swStockData[i:i + pastDays].reshape(1, -1)[0])  # 将pastDays行压缩成一行作为trainX的一组
-        trainY.append(swStockData[i + pastDays][3])  # 将第pastDays天的收盘价作为trainY
+        trainY.append(swStockData[i + pastDays + (forecastDays - 1)][3])  # 将第pastDays天的收盘价作为trainY
     return trainX, trainY
 
 
-def getTestData(stockDataDf, testStartDate, testEndDate, pastDays):
+def getTestData(stockDataDf, testStartDate, testEndDate, forecastDays, pastDays):
     """
     计算该窗口的测试集
     :param stockDataDf: 股票数据
@@ -114,7 +116,7 @@ def getTestData(stockDataDf, testStartDate, testEndDate, pastDays):
     swStockDataDf = stockDataDf.loc[testStartDate:testEndDate]  # 取当前滑动窗口股票数据
     swStockData = np.array(swStockDataDf)  # 当前滑动窗口训练数据集, 二维数组
     for i in range(len(swStockData)):  # 根据将过去pastDays天数据作为一组
-        if (i + pastDays >= len(swStockData)):  # 最后一组不满pastDays, 丢弃
+        if (i + pastDays + (forecastDays - 1) >= len(swStockData)):  # 最后一组不满pastDays, 丢弃
             break
         testX.append(swStockData[i:i + pastDays].reshape(1, -1)[0])  # 将pastDays行压缩成一行作为testX的一组
         # testY.append(swStockData[i + pastDays][3])  # 将第pastDays天的收盘价作为testY
@@ -126,9 +128,10 @@ def getRatio(realPreDf):
     return ratio
 
 
-def lRPredict(forecastDays, pastDays, maValue, stepMonth, sampleDataSize):
+def lRPredict(df, backtestStartDate, backtestEndDate, forecastDays, pastDays, maValue, stepMonth, sampleDataSize):
     stockDataDf = getStockDataDf(df, maValue)  # 计算ma列, 获得股票数据
-    slidingWindowDf = getSlidingWindowDf(stockDataDf, sampleDataSize, stepMonth)  # 求滑动窗口
+    slidingWindowDf = getSlidingWindowDf(stockDataDf, sampleDataSize, backtestStartDate, backtestEndDate,
+                                         stepMonth)  # 求滑动窗口
 
     # 生成zip,用于遍历滑动窗口
     swZip = zip(slidingWindowDf['样本内开始'].values, slidingWindowDf['样本内结束'].values,
@@ -142,12 +145,13 @@ def lRPredict(forecastDays, pastDays, maValue, stepMonth, sampleDataSize):
         # 1. 计算训练数据集trainX, trainY
         trainStartDate = sw[0]  # 当前窗口数据集开始时间
         trainEndDate = sw[1]  # 当窗口数据集结束时间
-        trainX, trainY = getTrainData(stockDataDf, trainStartDate, trainEndDate, pastDays)  # 计算训练数据集trainX, trainY
+        trainX, trainY = getTrainData(stockDataDf, trainStartDate, trainEndDate, forecastDays,
+                                      pastDays)  # 计算训练数据集trainX, trainY
 
         # 2. 计算测试集testX, testY
         testStartDate = sw[2]  # 当前窗口测试集开始时间
         testEndDate = sw[3]  # 当前窗口测试集结束时间
-        testX, testY = getTestData(stockDataDf, testStartDate, testEndDate, pastDays)
+        testX, testY = getTestData(stockDataDf, testStartDate, testEndDate, forecastDays, pastDays)
 
         # 3. 训练
         model = LinearRegression()  # 设定模型为线性回归
@@ -160,35 +164,3 @@ def lRPredict(forecastDays, pastDays, maValue, stepMonth, sampleDataSize):
     ratio = getRatio(realPreDf)
 
     return realPreDf, ratio
-
-
-if __name__ == '__main__':
-    # 数据集路径
-    stockDataFile = r"./StockData.xlsx"
-
-    # 样本内区间
-    sampleStartDate = datetime.datetime.strptime('2005-1-4', '%Y-%m-%d')
-    sampleEndDate = datetime.datetime.strptime('2013-12-31', '%Y-%m-%d')
-    # 样本外区间
-    backtestStartDate = datetime.datetime.strptime('2014-01-02', '%Y-%m-%d')
-    backtestEndDate = datetime.datetime.strptime('2022-9-30', '%Y-%m-%d')
-
-    # 参数
-    forecastDays = 1  # 预测未来第几天的股价
-    pastDays = 5  # 过去n日作为一组
-    maValue = 30  # MA取值
-    stepMonth = 6  # 滑动窗口步长,月
-    sampleDataSize = 9  # 样本内数据量: 9年
-
-    maRange = range(1, 61)
-    pastDaysRange = range(1, 11)
-
-    df = pd.read_excel(stockDataFile, sheet_name='sz50', index_col='Date', parse_dates=['Date'])  # 读取数据集
-
-    iterAll = []
-    for pastDays in pastDaysRange:
-        for maValue in maRange:
-            realPreDf, ratio = lRPredict(forecastDays, pastDays, maValue, stepMonth, sampleDataSize)
-            iterAll.append([pastDays, maValue, ratio])
-            print(f'pastDays = {pastDays}, ma = {maValue}, ratio={ratio}', end='\r')
-    iterAllDf = pd.DataFrame(iterAll, columns=['pastDays', 'ma', 'ratio'])
