@@ -236,16 +236,16 @@ def LSTMPredict(df, backtestStartDate, backtestEndDate, forecastDays, pastDays, 
         # 3. 训练
         model = Sequential()
         # 构建第一层
-        model.add(LSTM(10, input_shape=trainX.shape[1:], return_sequences=True))
+        model.add(LSTM(10, input_shape=trainX.shape[1:], activation='tanh', return_sequences=True))
         model.add(Dropout(0.1))  # 为防止过拟合, 删除0.1%的神经元
         # 构建第二层
-        model.add(LSTM(10, return_sequences=True))
+        model.add(LSTM(10, activation='tanh', return_sequences=True))
         model.add(Dropout(0.1))  # 为防止过拟合, 删除0.1%的神经元
         # 构建第三层
-        model.add(LSTM(10))
+        model.add(LSTM(10, activation='tanh'))
         model.add(Dropout(0.1))  # 为防止过拟合, 删除0.1%的神经元
         # 构建全连接层
-        model.add(Dense(10))
+        model.add(Dense(10, activation='tanh'))
         model.add(Dropout(0.1))  # 为防止过拟合, 删除0.1%的神经元
         # 输出层
         model.add(Dense(1))
